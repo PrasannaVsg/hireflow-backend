@@ -1,0 +1,28 @@
+# Maven
+target/
+*.jar
+*.war
+*.class
+
+# Eclipse
+.classpath
+.project
+.settings/
+.factorypath
+
+# IntelliJ
+.idea/
+*.iml
+*.iws
+
+# Spring Boot
+*.log
+logs/
+
+# Environment / secrets
+.env
+*.env
+
+# OS
+.DS_Store
+Thumbs.db
