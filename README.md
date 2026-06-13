@@ -12,7 +12,6 @@ AI-powered recruiting platform backend that automates resume ranking, candidate 
 - [Prerequisites](#prerequisites)
 - [Local Setup](#local-setup)
 - [Environment Variables](#environment-variables)
-- [Running the Application](#running-the-application)
 - [API Reference](#api-reference)
 - [Application Flow](#application-flow)
 
@@ -98,7 +97,7 @@ AI-powered recruiting platform backend that automates resume ranking, candidate 
   - **Outreach Email:** Generates a personalized recruitment email for a candidate based on job and resume
 - **Called when:**
   - `POST /api/v1/jobs/{jobId}/rankings/run` — ranking
-  - `POST /api/v1/outreach` — email drafting
+  - `POST /api/v1/outreach/draft` — email drafting
   - `POST /api/v1/jobs/{jobId}/auto-process` — both
 
 ---
@@ -204,11 +203,19 @@ Health check: `http://localhost:8080/actuator/health`
 
 Base URL: `http://localhost:8080/api/v1`
 
+> All endpoints that modify data require a valid JWT token in the `Authorization: Bearer <token>` header. Get a token from the Login API first.
+
 ---
 
 ### Authentication
 
+Authentication APIs manage who can access the system. Every user (recruiter, admin) must log in to get a token before calling any other API.
+
+---
+
 #### Login
+> **Why:** This is the entry point for all users. When a recruiter opens the HireFlow app, they call this API with their email and password. The response contains an `accessToken` (valid 15 min) used in all subsequent API calls, and a `refreshToken` (valid 7 days) to get a new access token without logging in again.
+
 ```
 POST /api/v1/auth/login
 Content-Type: application/json
@@ -229,7 +236,11 @@ Response:
 }
 ```
 
+---
+
 #### Refresh Token
+> **Why:** The access token expires every 15 minutes for security. Instead of asking the user to log in again, the frontend silently calls this API with the refresh token to get a fresh access token. This keeps the user's session alive without interruption.
+
 ```
 POST /api/v1/auth/refresh
 Content-Type: application/json
@@ -240,19 +251,38 @@ Request:
   "refreshToken": "eyJhbGciOiJIUzI1NiJ9..."
 }
 ```
+Response:
+```json
+{
+  "accessToken": "eyJhbGciOiJIUzI1NiJ9...",
+  "expiresIn": 900
+}
+```
+
+---
 
 #### Logout
+> **Why:** Invalidates the user's refresh token so it can no longer be used to generate new access tokens. Important for security when a recruiter logs out or their account is compromised.
+
 ```
 POST /api/v1/auth/logout
+Authorization: Bearer <token>
 ```
 
 ---
 
 ### Users
 
+User management APIs let admins control who has access to the HireFlow platform and what they can do.
+
+---
+
 #### Create User
+> **Why:** When a new recruiter or hiring manager joins the team, the admin calls this API to create their account. The `role` field controls access — `ADMIN` can manage everything, `RECRUITER` can only manage jobs and candidates within their organization.
+
 ```
 POST /api/v1/users
+Authorization: Bearer <token>
 Content-Type: application/json
 ```
 Request:
@@ -275,23 +305,57 @@ Response:
 }
 ```
 
+---
+
 #### List Users
+> **Why:** Admins use this to see all team members who have access to the platform — useful for auditing who is using the system and managing the team.
+
 ```
 GET /api/v1/users?page=0&size=20
+Authorization: Bearer <token>
+```
+Response:
+```json
+{
+  "content": [
+    {
+      "id": "user-uuid",
+      "fullName": "Sam Recruiter",
+      "email": "sam@hireflow.io",
+      "role": "RECRUITER",
+      "enabled": true
+    }
+  ],
+  "totalElements": 5,
+  "page": 0,
+  "size": 20
+}
 ```
 
+---
+
 #### Disable User
+> **Why:** When a recruiter leaves the company, the admin disables their account instead of deleting it. This preserves all their historical activity (jobs created, candidates ranked) while preventing them from logging in.
+
 ```
 PATCH /api/v1/users/{userId}/disable
+Authorization: Bearer <token>
 ```
 
 ---
 
 ### Jobs
 
+Job APIs manage the job requisitions (open positions). Jobs are the central entity — candidates apply to jobs, rankings are done per job, and outreach emails are written for a specific job.
+
+---
+
 #### Create Job
+> **Why:** This is how a recruiter posts a new open position. The job description you write here is what Voyage AI converts into an embedding vector. The better and more detailed the description, the more accurately the system will match candidates. `shortlistSize` controls how many candidates Claude AI will evaluate during ranking (to control cost). `scoreThreshold` filters out candidates below a minimum score.
+
 ```
 POST /api/v1/jobs
+Authorization: Bearer <token>
 Content-Type: application/json
 ```
 Request:
@@ -322,9 +386,14 @@ Response:
 }
 ```
 
-#### Publish Job (triggers embedding via Voyage AI)
+---
+
+#### Publish Job (triggers AI embedding)
+> **Why:** Moving a job from `DRAFT` to `OPEN` is what activates it for recruiting. This is also the trigger that calls Voyage AI to convert the job description into a 1024-dimension embedding vector, which is stored in PostgreSQL. Without this step, ranking cannot work because there is no job vector to compare candidates against. Always publish the job before uploading resumes.
+
 ```
 PATCH /api/v1/jobs/{jobId}/status?status=OPEN
+Authorization: Bearer <token>
 ```
 Response:
 ```json
@@ -334,16 +403,21 @@ Response:
 }
 ```
 
+---
+
 #### Get Job by ID
+> **Why:** Used by the UI to display the full details of a specific job — title, description, status, configuration. Also useful for verifying that a job was created correctly before starting to upload resumes.
+
 ```
 GET /api/v1/jobs/{jobId}
+Authorization: Bearer <token>
 ```
 Response:
 ```json
 {
   "id": "0a6527e4-1809-4cdc-8199-6959391eb42c",
   "title": "Senior Java Engineer",
-  "description": "We need a Java developer...",
+  "description": "We need a Java developer with Spring Boot...",
   "location": "Bangalore",
   "seniority": "Senior",
   "status": "OPEN",
@@ -354,16 +428,21 @@ Response:
 }
 ```
 
+---
+
 #### Update Job
+> **Why:** Allows a recruiter to correct or improve a job description after creation. For example, if the hiring manager changes the requirements, the recruiter updates the description here. **Important:** after updating, call the Reindex API to regenerate the embedding so rankings stay accurate with the new description.
+
 ```
 PUT /api/v1/jobs/{jobId}
+Authorization: Bearer <token>
 Content-Type: application/json
 ```
 Request:
 ```json
 {
   "title": "Senior Java Engineer (Updated)",
-  "description": "Updated job description...",
+  "description": "Updated job description with Kubernetes requirement added...",
   "location": "Remote",
   "seniority": "Senior",
   "requiredSkills": "Java, Spring Boot, Kubernetes",
@@ -372,12 +451,15 @@ Request:
 }
 ```
 
+---
+
 #### Reindex Job Embedding
+> **Why:** When a job description is updated, the old embedding stored in PostgreSQL is now stale — it reflects the old description. Calling this API tells Voyage AI to re-process the updated description and replaces the stored vector. Without reindexing, the ranking system will still compare candidates against the old job description, giving inaccurate results.
+
 ```
 POST /api/v1/jobs/{jobId}/reindex
+Authorization: Bearer <token>
 ```
-> Re-embeds the job description via Voyage AI. Use after editing job description.
-
 Response:
 ```json
 {
@@ -386,23 +468,57 @@ Response:
 }
 ```
 
+---
+
 #### Delete Job
+> **Why:** Removes a job requisition that was created by mistake or is no longer needed. This also removes associated rankings and auto-process config for that job.
+
 ```
 DELETE /api/v1/jobs/{jobId}
+Authorization: Bearer <token>
 ```
 
+---
+
 #### List Jobs
+> **Why:** Shows all job requisitions for the organization — used by the recruiter's dashboard to display open positions. Supports pagination to handle organizations with many jobs. Use the `status` filter to show only `OPEN`, `DRAFT`, or `CLOSED` jobs.
+
 ```
 GET /api/v1/jobs?page=0&size=20
+Authorization: Bearer <token>
+```
+Response:
+```json
+{
+  "content": [
+    {
+      "id": "0a6527e4-1809-4cdc-8199-6959391eb42c",
+      "title": "Senior Java Engineer",
+      "status": "OPEN",
+      "location": "Bangalore",
+      "createdAt": "2026-06-13T10:00:00Z"
+    }
+  ],
+  "totalElements": 3,
+  "page": 0,
+  "size": 20
+}
 ```
 
 ---
 
 ### Candidates
 
-#### Create Single Candidate
+Candidate APIs manage job applicants. Candidates are linked to a specific job and move through a hiring pipeline from SOURCED → SCREENING → INTERVIEW → OFFER → HIRED/REJECTED.
+
+---
+
+#### Create Single Candidate (manual entry)
+> **Why:** Used when a recruiter wants to add a single candidate manually — for example, a referral from an employee, or someone who applied via email and doesn't have a resume file. The `resumeText` field accepts plain text of the resume, which Voyage AI will embed so this candidate can participate in AI ranking just like uploaded resumes.
+
 ```
 POST /api/v1/candidates
+Authorization: Bearer <token>
 Content-Type: application/json
 ```
 Request:
@@ -412,8 +528,8 @@ Request:
   "email": "jane.doe@example.com",
   "phone": "+91-9876543210",
   "jobId": "0a6527e4-1809-4cdc-8199-6959391eb42c",
-  "source": "LINKEDIN",
-  "resumeText": "Jane Doe is a Senior Java Developer with 7 years of experience in Spring Boot, PostgreSQL, and microservices..."
+  "source": "REFERRAL",
+  "resumeText": "Jane Doe is a Senior Java Developer with 7 years of experience in Spring Boot, PostgreSQL, and microservices. She has led teams of 5 engineers and delivered 3 production systems."
 }
 ```
 Response:
@@ -428,9 +544,14 @@ Response:
 }
 ```
 
+---
+
 #### Get Candidate by ID
+> **Why:** Used by the UI to show a candidate's full profile page — their contact details, resume text, pipeline stage, and which job they applied for. Also useful when debugging ranking results to verify what resume text was stored for a candidate.
+
 ```
 GET /api/v1/candidates/{candidateId}
+Authorization: Bearer <token>
 ```
 Response:
 ```json
@@ -439,7 +560,7 @@ Response:
   "fullName": "Jane Doe",
   "email": "jane.doe@example.com",
   "phone": "+91-9876543210",
-  "source": "LINKEDIN",
+  "source": "REFERRAL",
   "status": "ACTIVE",
   "pipelineStage": "SOURCED",
   "resumeText": "Jane Doe is a Senior Java Developer...",
@@ -448,71 +569,113 @@ Response:
 }
 ```
 
+---
+
 #### Get Resume Download URL
+> **Why:** Resume files are stored securely in MinIO (private storage). You cannot access them with a direct URL — you need a time-limited pre-signed URL that expires after 1 hour. This API generates that URL so the UI can show a "Download Resume" button that works temporarily without exposing the storage bucket publicly.
+
 ```
 GET /api/v1/candidates/{candidateId}/resume-url
+Authorization: Bearer <token>
 ```
 Response:
 ```json
 {
-  "url": "http://localhost:9000/hireflow-resumes/candidate-uuid/resume.pdf?X-Amz-Expires=3600&...",
+  "url": "http://localhost:9000/hireflow-resumes/candidate-uuid/resume.pdf?X-Amz-Expires=3600&X-Amz-Signature=...",
   "expiresIn": 3600
 }
 ```
 
+---
+
 #### Bulk Upload Resumes
+> **Why:** This is the most commonly used candidate intake method. A recruiter receives 50 resumes from LinkedIn or Naukri, selects all files, and uploads them in one request. The system processes them asynchronously in the background — it extracts text from each PDF/Word file using Apache Tika, saves the candidate record, stores the resume file in MinIO, and calls Voyage AI to generate an embedding for each resume. The `source` field tracks where candidates came from for analytics. Returns immediately with a job tracking ID — use the status API to check progress.
+
 ```
 POST /api/v1/candidates/batch-upload
+Authorization: Bearer <token>
 Content-Type: multipart/form-data
 ```
 Form fields:
-| Field | Type | Value |
+| Field | Type | Description |
 |---|---|---|
-| `files` | File | resume.pdf or resume.docx |
-| `jobId` | Text | `0a6527e4-1809-4cdc-8199-6959391eb42c` |
-| `source` | Text | `LINKEDIN` / `NAUKRI` / `INDEED` / `INTERNSHALA` / `REFERRAL` / `DIRECT` / `OTHER` |
+| `files` | File(s) | Resume files (.pdf or .docx) — can select multiple |
+| `jobId` | Text | The job ID these candidates are applying for |
+| `source` | Text | Where the resumes came from: `LINKEDIN` / `NAUKRI` / `INDEED` / `INTERNSHALA` / `REFERRAL` / `DIRECT` / `OTHER` |
 
 Response:
 ```json
 {
   "jobId": "4983f7e7-e66a-4b58-a939-a9c74cc1b7b9",
   "status": "QUEUED",
-  "total": 1
+  "total": 5
 }
 ```
 
+---
+
 #### Check Upload Status
+> **Why:** Since bulk upload processes resumes in the background (to handle large batches without timing out), this API lets the UI poll to check whether all resumes have been processed. Once `state` is `COMPLETED`, you know all candidates are saved and embedded, and ranking can begin. The `failed` count tells you if any resumes could not be read (corrupted files, scanned PDFs, etc.).
+
 ```
 GET /api/v1/candidates/batch-upload/{jobId}/status
+Authorization: Bearer <token>
 ```
 Response:
 ```json
 {
   "jobId": "4983f7e7-e66a-4b58-a939-a9c74cc1b7b9",
   "state": "COMPLETED",
-  "total": 1,
-  "succeeded": 1,
-  "failed": 0
+  "total": 5,
+  "succeeded": 4,
+  "failed": 1
 }
 ```
 
+---
+
 #### List Candidates for a Job
+> **Why:** Shows all candidates who applied for a specific job. This powers the candidate list view in the UI where recruiters can see everyone in their pipeline. Use the `stage` filter to view only candidates in a specific pipeline stage — e.g., show only candidates currently in `INTERVIEW` to prepare for today's interviews.
+
 ```
 GET /api/v1/candidates?jobId={jobId}&page=0&size=20
+Authorization: Bearer <token>
 ```
+Response:
+```json
+{
+  "content": [
+    {
+      "id": "candidate-uuid",
+      "fullName": "John Smith",
+      "email": "john@example.com",
+      "source": "LINKEDIN",
+      "pipelineStage": "SOURCED",
+      "status": "ACTIVE"
+    }
+  ],
+  "totalElements": 50,
+  "page": 0,
+  "size": 20
+}
+```
+
+---
 
 #### Move Pipeline Stage
+> **Why:** This is how the recruiter tracks where each candidate is in the hiring process. After reviewing rankings, the recruiter moves shortlisted candidates to `SCREENING`. After a phone screen, they move them to `INTERVIEW`. This is the core workflow action — every stage change is recorded and feeds into the analytics hiring funnel. The system supports: `SOURCED` → `SCREENING` → `INTERVIEW` → `OFFER` → `HIRED` / `REJECTED`.
+
 ```
 PATCH /api/v1/candidates/{candidateId}/stage?stage=SCREENING
+Authorization: Bearer <token>
 ```
-Stages: `SOURCED` → `SCREENING` → `INTERVIEW` → `OFFER` → `HIRED` / `REJECTED`
-
 Response:
 ```json
 {
   "id": "candidate-uuid",
   "fullName": "John Smith",
-  "pipelineStage": "SCREENING"
+  "pipelineStage": "SCREENING",
+  "updatedAt": "2026-06-13T11:00:00Z"
 }
 ```
 
@@ -520,9 +683,16 @@ Response:
 
 ### Rankings
 
+Ranking APIs use AI to evaluate and score candidates for a job. This is the core intelligence feature of HireFlow — instead of a recruiter manually reading 50 resumes, the AI reads all of them and ranks them best-to-worst with reasoning.
+
+---
+
 #### Run Ranking (calls Claude AI)
+> **Why:** This is the most powerful API in the system. When called, it: (1) loads the job's stored embedding from PostgreSQL, (2) uses pgvector cosine similarity to find the top N most similar candidates fast and cheaply, (3) sends each shortlisted candidate's resume + job description to Claude AI, which reads them like a human recruiter and assigns a score 0–100 with a written rationale and skill-by-skill breakdown. The final score is a blend of 30% vector similarity + 70% Claude score. This gives you a ranked list of "best fit" candidates in seconds instead of hours. **Note:** Each call to this API consumes Anthropic API credits. Use `shortlistSize` to control how many candidates Claude evaluates (fewer = lower cost).
+
 ```
 POST /api/v1/jobs/{jobId}/rankings/run?shortlistSize=10
+Authorization: Bearer <token>
 ```
 Response:
 ```json
@@ -530,28 +700,68 @@ Response:
   {
     "candidateId": "candidate-uuid",
     "candidateName": "John Smith",
-    "score": 78.5000,
-    "vectorSimilarity": 0.85432100,
+    "score": 78.5,
+    "vectorSimilarity": 0.854321,
     "llmScore": 82,
-    "rationale": "Strong match for Java and Spring Boot requirements. 6 years of relevant experience with PostgreSQL and microservices. Missing Kubernetes experience.",
-    "skillBreakdown": "{\"Java\": 90, \"Spring Boot\": 85, \"PostgreSQL\": 80}",
+    "rationale": "Strong match for Java and Spring Boot requirements. 6 years of relevant experience with PostgreSQL and microservices. Missing Kubernetes experience which is listed as required.",
+    "skillBreakdown": "{\"Java\": 90, \"Spring Boot\": 85, \"PostgreSQL\": 80, \"Kubernetes\": 20}",
+    "model": "claude-sonnet-4-6"
+  },
+  {
+    "candidateId": "candidate-uuid-2",
+    "candidateName": "Priya Sharma",
+    "score": 65.2,
+    "vectorSimilarity": 0.741200,
+    "llmScore": 68,
+    "rationale": "Good Java background but only 3 years of experience. No Spring Boot projects mentioned. Strong on PostgreSQL.",
+    "skillBreakdown": "{\"Java\": 75, \"Spring Boot\": 40, \"PostgreSQL\": 85}",
     "model": "claude-sonnet-4-6"
   }
 ]
 ```
 
+---
+
 #### View Rankings (no AI call — reads from DB)
+> **Why:** After running ranking once, the results are saved in the database. This API reads those saved results without calling Claude AI again — so it is fast and free. Recruiters use this to review yesterday's ranking results, sort by score, or share rankings with hiring managers. The UI ranking table is powered by this API.
+
 ```
 GET /api/v1/jobs/{jobId}/rankings?page=0&size=20
+Authorization: Bearer <token>
+```
+Response:
+```json
+{
+  "content": [
+    {
+      "candidateId": "candidate-uuid",
+      "candidateName": "John Smith",
+      "score": 78.5,
+      "llmScore": 82,
+      "rationale": "Strong match for Java and Spring Boot...",
+      "rankedAt": "2026-06-13T09:00:00Z"
+    }
+  ],
+  "totalElements": 10,
+  "page": 0,
+  "size": 20
+}
 ```
 
 ---
 
 ### Outreach Emails
 
+Outreach APIs use Claude AI to generate personalized recruitment emails. Instead of a recruiter writing the same email 20 times with slightly different candidate names, the AI reads the job description and each candidate's resume and writes a unique, relevant email for each person.
+
+---
+
 #### Generate Outreach Email (calls Claude AI)
+> **Why:** Recruiters spend hours writing individual outreach emails. This API automates that — Claude reads the job requirements and the candidate's actual resume, then writes a personalized email that references the candidate's specific skills and why they are a good fit for this role. The `tone` field lets you control style: `professional` for enterprise roles, `friendly` for startups, `casual` for internships. The email is saved as a DRAFT first — the recruiter can review and approve it before sending. **Note:** Each call consumes Anthropic API credits.
+
 ```
 POST /api/v1/outreach/draft
+Authorization: Bearer <token>
 Content-Type: application/json
 ```
 Request:
@@ -566,22 +776,39 @@ Response:
 ```json
 {
   "id": "draft-uuid",
-  "subject": "Exciting Senior Java Engineer Opportunity",
-  "body": "Dear John,\n\nI came across your profile and was impressed by your Java and Spring Boot experience...",
+  "subject": "Exciting Senior Java Engineer Opportunity at HireFlow",
+  "body": "Dear John,\n\nI came across your profile and was impressed by your 6 years of Spring Boot experience and your work on PostgreSQL-backed microservices at your current company.\n\nWe have an exciting Senior Java Engineer opening at HireFlow in Bangalore that I believe would be a great fit for your background...",
   "status": "DRAFT",
   "createdAt": "2026-06-13T10:00:00Z"
 }
 ```
 
+---
+
 #### Update Outreach Status
+> **Why:** Provides an approval workflow before emails are sent. A recruiter can review the AI-generated email draft, make edits if needed, then mark it `APPROVED` when ready to send. If the email is not appropriate, it can be `REJECTED` without sending. This prevents accidentally sending a poorly written email to a candidate. Statuses: `DRAFT` → `APPROVED` → `SENT` or `DRAFT` → `REJECTED`.
+
 ```
 PATCH /api/v1/outreach/{draftId}/status?status=APPROVED
+Authorization: Bearer <token>
 ```
-Statuses: `DRAFT` → `APPROVED` → `SENT` / `REJECTED`
+Response:
+```json
+{
+  "id": "draft-uuid",
+  "status": "APPROVED",
+  "updatedAt": "2026-06-13T10:03:00Z"
+}
+```
+
+---
 
 #### Send Email (requires SMTP config)
+> **Why:** Actually delivers the outreach email to the candidate's inbox via SMTP. Only works if `MAIL_USERNAME` and `MAIL_PASSWORD` environment variables are configured. The email is sent from the address specified in `MAIL_FROM`. After sending, the draft status updates to `SENT` with a timestamp. The recruiter can use this timestamp to track when outreach was made for each candidate.
+
 ```
 POST /api/v1/outreach/{draftId}/send
+Authorization: Bearer <token>
 ```
 Response:
 ```json
@@ -596,9 +823,16 @@ Response:
 
 ### Analytics
 
-#### Dashboard (for UI prototype)
+Analytics APIs give recruiters and managers visibility into hiring activity and AI usage. These power the dashboard UI with metrics like how many jobs are open, where candidates are in the funnel, and how many AI credits have been used.
+
+---
+
+#### Dashboard (powers the UI prototype)
+> **Why:** This is the single API that feeds the entire recruiter dashboard screen. It returns everything needed in one call: open job count, active candidate count, AI usage stats, the hiring funnel breakdown by stage, and recent AI activity. The `days` parameter controls the time window — `days=30` shows data from the last 30 days. Used by the dashboard UI to show hiring health at a glance.
+
 ```
 GET /api/v1/analytics/dashboard?days=30
+Authorization: Bearer <token>
 ```
 Response:
 ```json
@@ -636,9 +870,14 @@ Response:
 }
 ```
 
+---
+
 #### Overview
+> **Why:** A lightweight summary endpoint that returns just the total AI token consumption for the organization within a time window. Useful for management reports and for monitoring whether AI costs are within budget. Faster than the full dashboard when you only need the cost summary.
+
 ```
 GET /api/v1/analytics/overview?days=30
+Authorization: Bearer <token>
 ```
 Response:
 ```json
@@ -649,9 +888,14 @@ Response:
 }
 ```
 
+---
+
 #### AI Usage Breakdown
+> **Why:** Breaks down AI token usage by operation type — how many times was Embedding called vs Ranking vs Outreach, and how many tokens each consumed. This helps teams understand where AI costs are coming from. For example, if `rankingCalls` is high, the team might increase `scoreThreshold` to reduce the number of candidates Claude evaluates. If `embeddingCalls` is high, resumes are being uploaded frequently.
+
 ```
 GET /api/v1/analytics/ai-usage?days=30
+Authorization: Bearer <token>
 ```
 Response:
 ```json
@@ -667,14 +911,19 @@ Response:
 
 ---
 
-### Auto Process (Rank + Shortlist + Email + Pipeline — all in one)
+### Auto Process
+
+The Auto Process API combines ranking + shortlisting + email generation + pipeline movement into a single automated workflow. Instead of calling 4–5 separate APIs, one call does everything.
+
+---
 
 #### Trigger Auto Process
+> **Why:** This is the fully automated "hands-free" mode. When called, the system: (1) runs ranking via Claude AI for all uploaded candidates, (2) filters out candidates below the `scoreThreshold`, (3) generates a personalized outreach email for each shortlisted candidate via Claude AI, (4) sends those emails, and (5) automatically moves shortlisted candidates to `SCREENING` in the pipeline. This is ideal for high-volume recruiting where the recruiter wants to process a batch of resumes overnight. **Requires** `autoProcessEnabled: true` on the job, and **consumes significant Anthropic credits** since it calls Claude for ranking + outreach for every shortlisted candidate.
+
 ```
 POST /api/v1/jobs/{jobId}/auto-process
+Authorization: Bearer <token>
 ```
-> Requires `autoProcessEnabled: true` on the job
-
 Response:
 ```json
 {
@@ -685,19 +934,49 @@ Response:
 }
 ```
 
+---
+
 #### Get Auto Process Config
+> **Why:** Retrieves the current automation settings for a job — whether auto-processing is enabled, what score threshold is set, how many candidates to shortlist, and what email tone to use. Useful for displaying current settings in the UI before the recruiter decides to change them.
+
 ```
 GET /api/v1/jobs/{jobId}/auto-process/config
+Authorization: Bearer <token>
+```
+Response:
+```json
+{
+  "jobId": "0a6527e4-1809-4cdc-8199-6959391eb42c",
+  "enabled": true,
+  "shortlistSize": 10,
+  "scoreThreshold": 70.0,
+  "emailTone": "professional"
+}
 ```
 
+---
+
 #### Update Auto Process Config
+> **Why:** Allows a recruiter to tune the automation settings without recreating the job. For example, after reviewing rankings, they might raise the `scoreThreshold` from 60 to 75 to be more selective, or reduce `shortlistSize` from 25 to 10 to lower Claude API costs. `emailTone` can be changed to `friendly` for junior roles or `formal` for executive positions.
+
 ```
 PATCH /api/v1/jobs/{jobId}/auto-process/config
+Authorization: Bearer <token>
 Content-Type: application/json
 ```
 Request:
 ```json
 {
+  "enabled": true,
+  "shortlistSize": 10,
+  "scoreThreshold": 70.0,
+  "emailTone": "friendly"
+}
+```
+Response:
+```json
+{
+  "jobId": "0a6527e4-1809-4cdc-8199-6959391eb42c",
   "enabled": true,
   "shortlistSize": 10,
   "scoreThreshold": 70.0,
@@ -712,28 +991,32 @@ Request:
 ### Manual Flow (step by step)
 
 ```
-1. POST /jobs                          → Create job
-2. PATCH /jobs/{id}/status?status=OPEN → Publish job (Voyage AI embeds job description)
-3. POST /candidates/batch-upload       → Upload resumes (Voyage AI embeds each resume)
-4. GET  /candidates/batch-upload/{id}/status → Check upload completed
-5. POST /jobs/{id}/rankings/run        → Claude AI ranks candidates
-6. GET  /jobs/{id}/rankings            → View ranked results
-7. PATCH /candidates/{id}/stage        → Move shortlisted candidates to SCREENING
-8. POST /outreach                      → Claude AI drafts email for a candidate
-9. POST /outreach/{id}/send            → Send the email
+1. POST /auth/login                        → Get access token
+2. POST /jobs                              → Create job
+3. PATCH /jobs/{id}/status?status=OPEN     → Publish job (Voyage AI embeds job description)
+4. POST /candidates/batch-upload           → Upload resumes (Voyage AI embeds each resume)
+5. GET  /candidates/batch-upload/{id}/status → Wait for upload to complete
+6. POST /jobs/{id}/rankings/run            → Claude AI ranks candidates (costs credits)
+7. GET  /jobs/{id}/rankings                → View ranked results (free — reads from DB)
+8. PATCH /candidates/{id}/stage            → Move shortlisted candidates to SCREENING
+9. POST /outreach/draft                    → Claude AI drafts email for a candidate
+10. PATCH /outreach/{id}/status?status=APPROVED → Approve the email
+11. POST /outreach/{id}/send               → Send the email
 ```
 
 ### Auto Flow (one API call)
 
 ```
-1. POST /jobs                          → Create job with autoProcessEnabled: true
-2. PATCH /jobs/{id}/status?status=OPEN → Publish job
-3. POST /candidates/batch-upload       → Upload resumes
-4. POST /jobs/{id}/auto-process        → Everything automated:
-                                          - Rank all candidates (Claude)
-                                          - Filter by scoreThreshold
-                                          - Draft + send emails (Claude)
-                                          - Move to SCREENING pipeline
+1. POST /auth/login                        → Get access token
+2. POST /jobs (autoProcessEnabled: true)   → Create job with automation on
+3. PATCH /jobs/{id}/status?status=OPEN     → Publish job
+4. POST /candidates/batch-upload           → Upload resumes
+5. GET  /candidates/batch-upload/{id}/status → Wait for completion
+6. POST /jobs/{id}/auto-process            → Everything automated:
+                                              - Rank all candidates (Claude)
+                                              - Filter by scoreThreshold
+                                              - Draft + send emails (Claude)
+                                              - Move to SCREENING pipeline
 ```
 
 ### How Ranking Works Internally
@@ -785,10 +1068,10 @@ Run Ranking API
 
 | URL | Description |
 |---|---|
-| `http://localhost:8080/swagger-ui.html` | Swagger API documentation |
+| `http://localhost:8080/swagger-ui.html` | Swagger API documentation (interactive) |
 | `http://localhost:8080/actuator/health` | Application health check |
-| `http://localhost:9000` | MinIO storage (API) |
-| `http://localhost:9001` | MinIO browser UI |
+| `http://localhost:9000` | MinIO storage API |
+| `http://localhost:9001` | MinIO browser UI (bucket management) |
 
 ---
 
@@ -799,3 +1082,4 @@ Run Ranking API
 | PostgreSQL | `hireflow` | `hireflow` |
 | MinIO | `minioadmin` | `minioadmin` |
 | Redis | — | no password |
+| HireFlow App | `admin@hireflow.io` | `changeme` |
