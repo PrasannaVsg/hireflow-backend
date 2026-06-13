@@ -206,6 +206,87 @@ Base URL: `http://localhost:8080/api/v1`
 
 ---
 
+### Authentication
+
+#### Login
+```
+POST /api/v1/auth/login
+Content-Type: application/json
+```
+Request:
+```json
+{
+  "email": "admin@hireflow.io",
+  "password": "changeme"
+}
+```
+Response:
+```json
+{
+  "accessToken": "eyJhbGciOiJIUzI1NiJ9...",
+  "refreshToken": "eyJhbGciOiJIUzI1NiJ9...",
+  "expiresIn": 900
+}
+```
+
+#### Refresh Token
+```
+POST /api/v1/auth/refresh
+Content-Type: application/json
+```
+Request:
+```json
+{
+  "refreshToken": "eyJhbGciOiJIUzI1NiJ9..."
+}
+```
+
+#### Logout
+```
+POST /api/v1/auth/logout
+```
+
+---
+
+### Users
+
+#### Create User
+```
+POST /api/v1/users
+Content-Type: application/json
+```
+Request:
+```json
+{
+  "fullName": "Sam Recruiter",
+  "email": "sam@hireflow.io",
+  "password": "securepassword",
+  "role": "RECRUITER"
+}
+```
+Response:
+```json
+{
+  "id": "user-uuid",
+  "fullName": "Sam Recruiter",
+  "email": "sam@hireflow.io",
+  "role": "RECRUITER",
+  "createdAt": "2026-06-13T10:00:00Z"
+}
+```
+
+#### List Users
+```
+GET /api/v1/users?page=0&size=20
+```
+
+#### Disable User
+```
+PATCH /api/v1/users/{userId}/disable
+```
+
+---
+
 ### Jobs
 
 #### Create Job
@@ -253,6 +334,63 @@ Response:
 }
 ```
 
+#### Get Job by ID
+```
+GET /api/v1/jobs/{jobId}
+```
+Response:
+```json
+{
+  "id": "0a6527e4-1809-4cdc-8199-6959391eb42c",
+  "title": "Senior Java Engineer",
+  "description": "We need a Java developer...",
+  "location": "Bangalore",
+  "seniority": "Senior",
+  "status": "OPEN",
+  "autoProcessEnabled": false,
+  "shortlistSize": 25,
+  "scoreThreshold": 60.0,
+  "createdAt": "2026-06-13T10:00:00Z"
+}
+```
+
+#### Update Job
+```
+PUT /api/v1/jobs/{jobId}
+Content-Type: application/json
+```
+Request:
+```json
+{
+  "title": "Senior Java Engineer (Updated)",
+  "description": "Updated job description...",
+  "location": "Remote",
+  "seniority": "Senior",
+  "requiredSkills": "Java, Spring Boot, Kubernetes",
+  "shortlistSize": 30,
+  "scoreThreshold": 65.0
+}
+```
+
+#### Reindex Job Embedding
+```
+POST /api/v1/jobs/{jobId}/reindex
+```
+> Re-embeds the job description via Voyage AI. Use after editing job description.
+
+Response:
+```json
+{
+  "id": "0a6527e4-1809-4cdc-8199-6959391eb42c",
+  "message": "Job reindexed successfully"
+}
+```
+
+#### Delete Job
+```
+DELETE /api/v1/jobs/{jobId}
+```
+
 #### List Jobs
 ```
 GET /api/v1/jobs?page=0&size=20
@@ -261,6 +399,66 @@ GET /api/v1/jobs?page=0&size=20
 ---
 
 ### Candidates
+
+#### Create Single Candidate
+```
+POST /api/v1/candidates
+Content-Type: application/json
+```
+Request:
+```json
+{
+  "fullName": "Jane Doe",
+  "email": "jane.doe@example.com",
+  "phone": "+91-9876543210",
+  "jobId": "0a6527e4-1809-4cdc-8199-6959391eb42c",
+  "source": "LINKEDIN",
+  "resumeText": "Jane Doe is a Senior Java Developer with 7 years of experience in Spring Boot, PostgreSQL, and microservices..."
+}
+```
+Response:
+```json
+{
+  "id": "candidate-uuid",
+  "fullName": "Jane Doe",
+  "email": "jane.doe@example.com",
+  "status": "ACTIVE",
+  "pipelineStage": "SOURCED",
+  "createdAt": "2026-06-13T10:00:00Z"
+}
+```
+
+#### Get Candidate by ID
+```
+GET /api/v1/candidates/{candidateId}
+```
+Response:
+```json
+{
+  "id": "candidate-uuid",
+  "fullName": "Jane Doe",
+  "email": "jane.doe@example.com",
+  "phone": "+91-9876543210",
+  "source": "LINKEDIN",
+  "status": "ACTIVE",
+  "pipelineStage": "SOURCED",
+  "resumeText": "Jane Doe is a Senior Java Developer...",
+  "jobId": "0a6527e4-1809-4cdc-8199-6959391eb42c",
+  "createdAt": "2026-06-13T10:00:00Z"
+}
+```
+
+#### Get Resume Download URL
+```
+GET /api/v1/candidates/{candidateId}/resume-url
+```
+Response:
+```json
+{
+  "url": "http://localhost:9000/hireflow-resumes/candidate-uuid/resume.pdf?X-Amz-Expires=3600&...",
+  "expiresIn": 3600
+}
+```
 
 #### Bulk Upload Resumes
 ```
@@ -353,7 +551,7 @@ GET /api/v1/jobs/{jobId}/rankings?page=0&size=20
 
 #### Generate Outreach Email (calls Claude AI)
 ```
-POST /api/v1/outreach
+POST /api/v1/outreach/draft
 Content-Type: application/json
 ```
 Request:
@@ -375,6 +573,12 @@ Response:
 }
 ```
 
+#### Update Outreach Status
+```
+PATCH /api/v1/outreach/{draftId}/status?status=APPROVED
+```
+Statuses: `DRAFT` → `APPROVED` → `SENT` / `REJECTED`
+
 #### Send Email (requires SMTP config)
 ```
 POST /api/v1/outreach/{draftId}/send
@@ -385,6 +589,79 @@ Response:
   "id": "draft-uuid",
   "status": "SENT",
   "sentAt": "2026-06-13T10:05:00Z"
+}
+```
+
+---
+
+### Analytics
+
+#### Dashboard (for UI prototype)
+```
+GET /api/v1/analytics/dashboard?days=30
+```
+Response:
+```json
+{
+  "periodDays": 30,
+  "openRequisitions": 5,
+  "activeCandidates": 42,
+  "aiRankingsRun": 12,
+  "outreachDrafted": 30,
+  "hiringFunnel": {
+    "SOURCED": 42,
+    "SCREENING": 18,
+    "INTERVIEW": 8,
+    "OFFER": 3,
+    "HIRED": 2,
+    "REJECTED": 11
+  },
+  "aiUsage": {
+    "totalTokens": 185000,
+    "byOperation": {
+      "RANKING": 95000,
+      "OUTREACH": 72000,
+      "EMBEDDING": 18000
+    }
+  },
+  "recentActivity": [
+    {
+      "operation": "RANKING",
+      "model": "claude-sonnet-4-6",
+      "success": true,
+      "latencyMs": 3200,
+      "createdAt": "2026-06-13T09:45:00Z"
+    }
+  ]
+}
+```
+
+#### Overview
+```
+GET /api/v1/analytics/overview?days=30
+```
+Response:
+```json
+{
+  "organisationId": "org-uuid",
+  "periodDays": 30,
+  "totalAiTokens": 185000
+}
+```
+
+#### AI Usage Breakdown
+```
+GET /api/v1/analytics/ai-usage?days=30
+```
+Response:
+```json
+{
+  "organisationId": "org-uuid",
+  "periodDays": 30,
+  "embeddingCalls": 54,
+  "rankingCalls": 12,
+  "outreachCalls": 30,
+  "totalTokens": 185000
 }
 ```
 
