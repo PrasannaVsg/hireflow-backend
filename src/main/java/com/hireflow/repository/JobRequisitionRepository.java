@@ -22,6 +22,8 @@ public interface JobRequisitionRepository extends JpaRepository<JobRequisition, 
 
     Optional<JobRequisition> findByIdAndOrganisationId(UUID id, UUID organisationId);
 
+    long countByOrganisationIdAndStatus(UUID organisationId, JobStatus status);
+
     @Modifying
     @Query(value = "update job_requisitions set embedding = cast(:embedding as vector), " +
                    "updated_at = now() where id = :id", nativeQuery = true)

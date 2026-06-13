@@ -13,6 +13,11 @@ public class AnalyticsController {
 
     private final AnalyticsService analyticsService;
 
+    @GetMapping("/dashboard")
+    public Map<String, Object> dashboard(@RequestParam(defaultValue = "30") int days) {
+        return analyticsService.dashboard(days);
+    }
+
     @GetMapping("/overview")
     public Map<String, Object> overview(@RequestParam(defaultValue = "30") int days) {
         return analyticsService.overview(days);

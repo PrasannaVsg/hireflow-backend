@@ -1,6 +1,7 @@
 package com.hireflow.repository;
 
 import com.hireflow.domain.Candidate;
+import com.hireflow.domain.enums.CandidateStatus;
 import com.hireflow.domain.enums.PipelineStage;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -23,6 +24,10 @@ public interface CandidateRepository extends JpaRepository<Candidate, UUID> {
     Page<Candidate> findByJobIdAndPipelineStage(UUID jobId, PipelineStage stage, Pageable pageable);
 
     Optional<Candidate> findByIdAndOrganisationId(UUID id, UUID organisationId);
+
+    long countByOrganisationIdAndStatus(UUID organisationId, CandidateStatus status);
+
+    long countByOrganisationIdAndPipelineStage(UUID organisationId, PipelineStage stage);
 
     @Modifying
     @Transactional
