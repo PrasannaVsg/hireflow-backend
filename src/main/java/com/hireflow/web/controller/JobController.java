@@ -16,6 +16,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.Instant;
 import java.util.UUID;
 
 @RestController
@@ -39,7 +40,8 @@ public class JobController {
     public record JobResponse(UUID id, String title, String description, String location,
                               String seniority, String requiredSkills, JobStatus status,
                               boolean autoProcessEnabled, int autoShortlistSize,
-                              java.math.BigDecimal autoScoreThreshold, String autoEmailTone) { }
+                              java.math.BigDecimal autoScoreThreshold, String autoEmailTone,
+                              long candidateCount, Instant createdAt, String createdByName) { }
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)

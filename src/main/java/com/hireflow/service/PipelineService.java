@@ -31,6 +31,7 @@ public class PipelineService {
     }
 
     private final CandidateRepository candidateRepository;
+    private final UserAuditService userAuditService;
 
     @Transactional
     public Candidate moveStage(UUID candidateId, PipelineStage target) {
@@ -48,6 +49,8 @@ public class PipelineService {
         }
         candidate.setPipelineStage(target);
         log.info("Candidate {} moved {} -> {}", candidateId, current, target);
+        userAuditService.log("CANDIDATE_STAGE_CHANGED", "CANDIDATE", candidateId,
+                candidate.getFullName(), current + " → " + target);
         return candidate;
     }
 }

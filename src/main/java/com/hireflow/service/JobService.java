@@ -5,6 +5,7 @@ import com.hireflow.domain.Organisation;
 import com.hireflow.domain.User;
 import com.hireflow.domain.enums.JobStatus;
 import com.hireflow.exception.ResourceNotFoundException;
+import com.hireflow.repository.CandidateRepository;
 import com.hireflow.repository.JobRequisitionRepository;
 import com.hireflow.repository.OrganisationRepository;
 import com.hireflow.repository.UserRepository;
@@ -30,6 +31,8 @@ public class JobService {
     private final OrganisationRepository orgRepository;
     private final UserRepository userRepository;
     private final EmbeddingService embeddingService;
+    private final CandidateRepository candidateRepository;
+    private final UserAuditService userAuditService;
 
     public JobResponse create(CreateJobRequest request) {
         UUID orgId = SecurityUtils.currentOrgId();
@@ -55,7 +58,9 @@ public class JobService {
                         && !request.emailTone().isBlank() ? request.emailTone() : "professional")
                 .build();
 
-        return toResponse(jobRepository.save(job));
+        JobRequisition saved = jobRepository.save(job);
+        userAuditService.log("JOB_CREATED", "JOB", saved.getId(), saved.getTitle(), null);
+        return toResponse(saved);
     }
 
     @Transactional(readOnly = true)
@@ -88,6 +93,7 @@ public class JobService {
         if (request.scoreThreshold() != null) job.setAutoScoreThreshold(request.scoreThreshold());
         if (request.emailTone() != null && !request.emailTone().isBlank())
             job.setAutoEmailTone(request.emailTone());
+        userAuditService.log("JOB_UPDATED", "JOB", job.getId(), job.getTitle(), null);
         return toResponse(job);
     }
 
@@ -97,6 +103,14 @@ public class JobService {
         JobRequisition job = jobRepository.findByIdAndOrganisationId(id, orgId)
                 .orElseThrow(() -> new ResourceNotFoundException("JobRequisition", id));
         job.setStatus(status);
+        if (status == JobStatus.CLOSED) {
+            int disabled = candidateRepository.deactivateByJobId(id);
+            log.info("Archived {} candidates for closed job {}", disabled, id);
+            userAuditService.log("JOB_CLOSED", "JOB", id, job.getTitle(), disabled + " candidates archived");
+        }
+        if (status == JobStatus.OPEN) {
+            userAuditService.log("JOB_PUBLISHED", "JOB", id, job.getTitle(), null);
+        }
         if (status == JobStatus.OPEN && job.getEmbedding() == null) {
             float[] embedding = embeddingService.embed(job.getDescription(), orgId, userId, id);
             jobRepository.updateEmbedding(id, embeddingService.toVectorLiteral(embedding));
@@ -119,6 +133,7 @@ public class JobService {
         UUID orgId = SecurityUtils.currentOrgId();
         JobRequisition job = jobRepository.findByIdAndOrganisationId(id, orgId)
                 .orElseThrow(() -> new ResourceNotFoundException("JobRequisition", id));
+        userAuditService.log("JOB_DELETED", "JOB", id, job.getTitle(), null);
         jobRepository.delete(job);
     }
 
@@ -147,9 +162,11 @@ public class JobService {
     }
 
     public JobResponse toResponse(JobRequisition job) {
+        long count = job.getId() != null ? candidateRepository.countByJobId(job.getId()) : 0;
+        String createdByName = job.getCreatedBy() != null ? job.getCreatedBy().getFullName() : null;
         return new JobResponse(job.getId(), job.getTitle(), job.getDescription(),
                 job.getLocation(), job.getSeniority(), job.getRequiredSkills(), job.getStatus(),
                 job.isAutoProcessEnabled(), job.getAutoShortlistSize(),
-                job.getAutoScoreThreshold(), job.getAutoEmailTone());
+                job.getAutoScoreThreshold(), job.getAutoEmailTone(), count, job.getCreatedAt(), createdByName);
     }
 }

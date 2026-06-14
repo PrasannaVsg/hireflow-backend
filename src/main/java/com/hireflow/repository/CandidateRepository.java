@@ -6,16 +6,18 @@ import com.hireflow.domain.enums.PipelineStage;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-public interface CandidateRepository extends JpaRepository<Candidate, UUID> {
+public interface CandidateRepository extends JpaRepository<Candidate, UUID>, JpaSpecificationExecutor<Candidate> {
 
     Page<Candidate> findByOrganisationId(UUID organisationId, Pageable pageable);
 
@@ -28,6 +30,16 @@ public interface CandidateRepository extends JpaRepository<Candidate, UUID> {
     long countByOrganisationIdAndStatus(UUID organisationId, CandidateStatus status);
 
     long countByOrganisationIdAndPipelineStage(UUID organisationId, PipelineStage stage);
+
+    long countByJobId(UUID jobId);
+
+    @Query(value = "select count(*) from candidates where job_id = :jobId and embedding is not null", nativeQuery = true)
+    long countEmbeddedByJobId(@Param("jobId") UUID jobId);
+
+    @Modifying
+    @Transactional
+    @Query("UPDATE Candidate c SET c.status = com.hireflow.domain.enums.CandidateStatus.ARCHIVED WHERE c.job.id = :jobId")
+    int deactivateByJobId(@Param("jobId") UUID jobId);
 
     @Modifying
     @Transactional

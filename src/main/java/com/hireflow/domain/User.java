@@ -66,4 +66,8 @@ public class User extends BaseEntity {
     @Column(name = "token_version", nullable = false)
     @Builder.Default
     private int tokenVersion = 0;
+
+    @Column(name = "must_change_password", nullable = false)
+    @Builder.Default
+    private boolean mustChangePassword = false;
 }

@@ -21,10 +21,14 @@ public class AuthController {
 
     public record RefreshRequest(@NotBlank String refreshToken) { }
 
+    public record ChangePasswordRequest(@NotBlank String currentPassword,
+                                        @NotBlank @jakarta.validation.constraints.Size(min = 10, max = 100) String newPassword) { }
+
     public record TokenResponse(String accessToken,
                                 String refreshToken,
                                 String tokenType,
-                                long expiresInSeconds) { }
+                                long expiresInSeconds,
+                                boolean mustChangePassword) { }
 
     @PostMapping("/login")
     public ResponseEntity<TokenResponse> login(@Valid @RequestBody LoginRequest request) {
@@ -40,5 +44,11 @@ public class AuthController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void logout() {
         authService.logout();
+    }
+
+    @PostMapping("/change-password")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void changePassword(@Valid @RequestBody ChangePasswordRequest request) {
+        authService.changePassword(request.currentPassword(), request.newPassword());
     }
 }

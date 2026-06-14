@@ -22,7 +22,8 @@ public class RankingController {
 
     public record RankingResponse(UUID candidateId, String candidateName, BigDecimal score,
                                   Integer llmScore, BigDecimal vectorSimilarity,
-                                  String rationale, String skillBreakdown) { }
+                                  String rationale, String skillBreakdown,
+                                  boolean claudeFailed, String claudeError) { }
 
     @PostMapping("/run")
     public List<RankingResponse> run(@PathVariable UUID jobId,
@@ -30,7 +31,8 @@ public class RankingController {
         return rankingService.rankCandidatesForJob(jobId, shortlistSize).stream()
                 .map(r -> new RankingResponse(
                         r.getCandidate().getId(), r.getCandidate().getFullName(), r.getScore(),
-                        r.getLlmScore(), r.getVectorSimilarity(), r.getRationale(), r.getSkillBreakdown()))
+                        r.getLlmScore(), r.getVectorSimilarity(), r.getRationale(), r.getSkillBreakdown(),
+                        r.getLlmScore() == null, r.getClaudeError()))
                 .toList();
     }
 
@@ -39,6 +41,7 @@ public class RankingController {
         return PageResponse.of(rankingService.listRankings(jobId, pageable)
                 .map(r -> new RankingResponse(
                         r.getCandidate().getId(), r.getCandidate().getFullName(), r.getScore(),
-                        r.getLlmScore(), r.getVectorSimilarity(), r.getRationale(), r.getSkillBreakdown())));
+                        r.getLlmScore(), r.getVectorSimilarity(), r.getRationale(), r.getSkillBreakdown(),
+                        r.getLlmScore() == null, r.getClaudeError())));
     }
 }

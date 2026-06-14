@@ -58,8 +58,6 @@ public class RankingService {
         List<SemanticMatch> shortlist = semanticSearchService
                 .searchByVector(jobId, orgId, shortlistSize);
 
-        rankingRepository.deleteByJobId(jobId);
-
         List<Ranking> results = new ArrayList<>(shortlist.size());
         for (SemanticMatch match : shortlist) {
             Candidate candidate = candidateRepository
@@ -69,7 +67,18 @@ public class RankingService {
                 continue;
             }
             Ranking ranking = scoreOne(job, candidate, match.getSimilarity(), orgId, actorId);
-            results.add(rankingRepository.save(ranking));
+            // Upsert: update existing row or insert new one
+            rankingRepository.findByJobIdAndCandidateId(jobId, candidate.getId())
+                    .ifPresentOrElse(existing -> {
+                        existing.setScore(ranking.getScore());
+                        existing.setVectorSimilarity(ranking.getVectorSimilarity());
+                        existing.setLlmScore(ranking.getLlmScore());
+                        existing.setRationale(ranking.getRationale());
+                        existing.setSkillBreakdown(ranking.getSkillBreakdown());
+                        existing.setModel(ranking.getModel());
+                        existing.setClaudeError(ranking.getClaudeError());
+                        results.add(rankingRepository.save(existing));
+                    }, () -> results.add(rankingRepository.save(ranking)));
         }
 
         results.sort((a, b) -> b.getScore().compareTo(a.getScore()));
@@ -85,6 +94,7 @@ public class RankingService {
     private Ranking scoreOne(JobRequisition job, Candidate candidate,
                              double similarity, UUID orgId, UUID actorId) {
         long start = System.currentTimeMillis();
+        BigDecimal vectorSimilarity = BigDecimal.valueOf(similarity).setScale(8, RoundingMode.HALF_UP);
         try {
             String systemPrompt = promptBuilder.buildRankingSystemPrompt();
             String userPrompt = promptBuilder.buildRankingUserPrompt(job, candidate);
@@ -107,7 +117,7 @@ public class RankingService {
                     .job(job)
                     .candidate(candidate)
                     .score(blended)
-                    .vectorSimilarity(BigDecimal.valueOf(similarity).setScale(8, RoundingMode.HALF_UP))
+                    .vectorSimilarity(vectorSimilarity)
                     .llmScore(parsed.fitScore())
                     .rationale(parsed.rationale())
                     .skillBreakdown(parsed.skillBreakdownJson())
@@ -118,7 +128,18 @@ public class RankingService {
             auditService.recordFailure(orgId, actorId, AiOperation.RANKING,
                     anthropicClient.modelId(), System.currentTimeMillis() - start,
                     candidate.getId(), e.getMessage());
-            throw e;
+            log.error("Claude ranking failed for candidate {} [{}]: {}", candidate.getFullName(), candidate.getId(), e.getMessage());
+            return Ranking.builder()
+                    .job(job)
+                    .candidate(candidate)
+                    .score(BigDecimal.valueOf(similarity * 100).multiply(VECTOR_WEIGHT).setScale(4, RoundingMode.HALF_UP))
+                    .vectorSimilarity(vectorSimilarity)
+                    .llmScore(null)
+                    .rationale(null)
+                    .skillBreakdown(null)
+                    .model(anthropicClient.modelId())
+                    .claudeError(e.getMessage())
+                    .build();
         }
     }
 }

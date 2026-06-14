@@ -20,4 +20,6 @@ public interface RankingRepository extends JpaRepository<Ranking, UUID> {
     Optional<Ranking> findByJobIdAndCandidateId(UUID jobId, UUID candidateId);
 
     void deleteByJobId(UUID jobId);
+
+    void deleteByJobIdAndCandidateId(UUID jobId, UUID candidateId);
 }

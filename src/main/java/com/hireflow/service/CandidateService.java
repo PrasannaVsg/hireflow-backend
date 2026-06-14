@@ -11,6 +11,8 @@ import com.hireflow.exception.ValidationException;
 import com.hireflow.repository.CandidateRepository;
 import com.hireflow.repository.JobRequisitionRepository;
 import com.hireflow.repository.OrganisationRepository;
+import com.hireflow.repository.RankingRepository;
+import com.hireflow.repository.UserRepository;
 import com.hireflow.web.controller.CandidateController.BatchUploadResponse;
 import com.hireflow.web.controller.CandidateController.CandidateResponse;
 import com.hireflow.web.controller.CandidateController.CreateCandidateRequest;
@@ -18,10 +20,15 @@ import com.hireflow.web.dto.common.PageResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import jakarta.persistence.criteria.Predicate;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -32,11 +39,14 @@ import java.util.UUID;
 public class CandidateService {
 
     private final CandidateRepository candidateRepository;
+    private final RankingRepository rankingRepository;
     private final OrganisationRepository orgRepository;
     private final JobRequisitionRepository jobRepository;
     private final StorageService storageService;
     private final ResumeUploadJob resumeUploadJob;
     private final JobStatusRegistry statusRegistry;
+    private final UserAuditService userAuditService;
+    private final UserRepository userRepository;
 
     @Value("${hireflow.storage.presign-ttl-seconds:600}")
     private int presignTtlSeconds;
@@ -58,7 +68,9 @@ public class CandidateService {
             candidate.setJob(jobRepository.getReferenceById(request.jobId()));
         }
 
-        return toResponse(candidateRepository.save(candidate));
+        Candidate saved = candidateRepository.save(candidate);
+        userAuditService.log("CANDIDATE_CREATED", "CANDIDATE", saved.getId(), saved.getFullName(), null);
+        return toResponse(saved);
     }
 
     @Transactional(readOnly = true)
@@ -69,12 +81,32 @@ public class CandidateService {
     }
 
     @Transactional(readOnly = true)
-    public PageResponse<CandidateResponse> list(UUID jobId, Pageable pageable) {
+    public PageResponse<CandidateResponse> list(UUID jobId, LocalDate from, LocalDate to, Pageable pageable) {
         UUID orgId = SecurityUtils.currentOrgId();
-        var page = jobId == null
-                ? candidateRepository.findByOrganisationId(orgId, pageable)
-                : candidateRepository.findByJobIdAndOrganisationId(jobId, orgId, pageable);
-        return PageResponse.of(page.map(this::toResponse));
+        Instant fromInstant = from != null ? from.atStartOfDay().toInstant(ZoneOffset.UTC) : null;
+        Instant toInstant   = to   != null ? to.plusDays(1).atStartOfDay().toInstant(ZoneOffset.UTC) : null;
+
+        Specification<Candidate> spec = (root, query, cb) -> {
+            List<Predicate> predicates = new ArrayList<>();
+            predicates.add(cb.equal(root.get("organisation").get("id"), orgId));
+            predicates.add(cb.notEqual(root.get("status"), CandidateStatus.ARCHIVED));
+            if (jobId != null)      predicates.add(cb.equal(root.get("job").get("id"), jobId));
+            if (fromInstant != null) predicates.add(cb.greaterThanOrEqualTo(root.get("createdAt"), fromInstant));
+            if (toInstant != null)   predicates.add(cb.lessThan(root.get("createdAt"), toInstant));
+            query.orderBy(cb.desc(root.get("createdAt")));
+            return cb.and(predicates.toArray(new Predicate[0]));
+        };
+
+        return PageResponse.of(candidateRepository.findAll(spec, pageable).map(this::toResponse));
+    }
+
+    public void delete(UUID id) {
+        UUID orgId = SecurityUtils.currentOrgId();
+        Candidate candidate = candidateRepository.findByIdAndOrganisationId(id, orgId)
+                .orElseThrow(() -> new ResourceNotFoundException("Candidate", id));
+        userAuditService.log("CANDIDATE_DELETED", "CANDIDATE", id, candidate.getFullName(), null);
+        rankingRepository.deleteByJobIdAndCandidateId(candidate.getJob().getId(), id);
+        candidateRepository.delete(candidate);
     }
 
     public BatchUploadResponse enqueueBatchUpload(List<MultipartFile> files, UUID jobId,
@@ -96,6 +128,8 @@ public class CandidateService {
         String jobIdStr = statusRegistry.create(items.size());
         resumeUploadJob.process(jobIdStr, orgId, jobId, source, items);
 
+        userAuditService.log("CANDIDATES_UPLOADED", "CANDIDATE", jobId,
+                null, items.size() + " resumes queued for job " + jobId);
         return new BatchUploadResponse(jobIdStr, items.size(),
                 "/api/v1/candidates/batch-upload/" + jobIdStr + "/status");
     }
@@ -120,9 +154,20 @@ public class CandidateService {
         return storageService.presignDownload(candidate.getResumeObjectKey(), presignTtlSeconds);
     }
 
+    @Transactional(readOnly = true)
     public CandidateResponse toResponse(Candidate c) {
-        return new CandidateResponse(c.getId(), c.getFullName(), c.getEmail(), c.getPhone(),
-                c.getJob() != null ? c.getJob().getId() : null,
-                c.getStatus().name(), c.getPipelineStage(), c.getSource());
+        // Re-fetch to ensure job proxy is loaded in an active session
+        Candidate fresh = candidateRepository.findById(c.getId()).orElse(c);
+        String createdByName = null;
+        if (fresh.getCreatedByUserId() != null) {
+            createdByName = userRepository.findById(fresh.getCreatedByUserId())
+                    .map(u -> u.getFullName()).orElse(null);
+        }
+        return new CandidateResponse(
+                fresh.getId(), fresh.getFullName(), fresh.getEmail(), fresh.getPhone(),
+                fresh.getJob() != null ? fresh.getJob().getId() : null,
+                fresh.getJob() != null ? fresh.getJob().getTitle() : null,
+                fresh.getStatus().name(), fresh.getPipelineStage(), fresh.getSource(),
+                fresh.getCreatedAt(), createdByName);
     }
 }

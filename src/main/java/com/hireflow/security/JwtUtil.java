@@ -53,6 +53,7 @@ public class JwtUtil {
                 .subject(user.getUserId().toString())
                 .claims(Map.of(
                         "email", user.getUsername(),
+                        "fullName", user.getFullName(),
                         "org", user.getOrganisationId().toString(),
                         "role", user.getRole(),
                         "typ", "access"))

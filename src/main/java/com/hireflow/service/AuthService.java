@@ -3,6 +3,7 @@ package com.hireflow.service;
 import com.hireflow.domain.User;
 import com.hireflow.exception.UnauthorizedException;
 import com.hireflow.repository.UserRepository;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import com.hireflow.security.CustomUserDetails;
 import com.hireflow.security.JwtUtil;
 import com.hireflow.web.controller.AuthController.TokenResponse;
@@ -25,6 +26,7 @@ public class AuthService {
     private final AuthenticationManager authenticationManager;
     private final UserRepository userRepository;
     private final JwtUtil jwtUtil;
+    private final PasswordEncoder passwordEncoder;
 
     @Transactional
     public TokenResponse login(String email, String password) {
@@ -65,9 +67,23 @@ public class AuthService {
         SecurityContextHolder.clearContext();
     }
 
+    @Transactional
+    public void changePassword(String currentPassword, String newPassword) {
+        UUID userId = SecurityUtils.currentUserId();
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new UnauthorizedException("User not found"));
+        if (!passwordEncoder.matches(currentPassword, user.getPasswordHash())) {
+            throw new UnauthorizedException("Current password is incorrect");
+        }
+        user.setPasswordHash(passwordEncoder.encode(newPassword));
+        user.setMustChangePassword(false);
+        user.setTokenVersion(user.getTokenVersion() + 1);
+    }
+
     private TokenResponse issueTokens(CustomUserDetails principal) {
         String access = jwtUtil.generateAccessToken(principal);
         String refresh = jwtUtil.generateRefreshToken(principal);
-        return new TokenResponse(access, refresh, "Bearer", jwtUtil.getAccessTtlSeconds());
+        return new TokenResponse(access, refresh, "Bearer", jwtUtil.getAccessTtlSeconds(),
+                principal.isMustChangePassword());
     }
 }

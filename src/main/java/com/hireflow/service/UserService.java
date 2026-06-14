@@ -5,6 +5,7 @@ import com.hireflow.domain.User;
 import com.hireflow.domain.enums.Role;
 import com.hireflow.exception.ConflictException;
 import com.hireflow.exception.ResourceNotFoundException;
+import com.hireflow.exception.ValidationException;
 import com.hireflow.repository.OrganisationRepository;
 import com.hireflow.repository.UserRepository;
 import com.hireflow.web.controller.UserController.CreateUserRequest;
@@ -27,6 +28,8 @@ public class UserService {
     private final OrganisationRepository orgRepository;
     private final PasswordEncoder passwordEncoder;
 
+    static final String DEFAULT_PASSWORD = "Welcome@2026";
+
     public UserResponse create(CreateUserRequest request) {
         UUID orgId = SecurityUtils.currentOrgId();
         if (userRepository.existsByEmail(request.email())) {
@@ -36,10 +39,11 @@ public class UserService {
         User user = User.builder()
                 .organisation(org)
                 .email(request.email())
-                .passwordHash(passwordEncoder.encode(request.password()))
+                .passwordHash(passwordEncoder.encode(DEFAULT_PASSWORD))
                 .fullName(request.fullName())
                 .role(request.role())
                 .enabled(true)
+                .mustChangePassword(true)
                 .build();
         return toResponse(userRepository.save(user));
     }
@@ -56,6 +60,25 @@ public class UserService {
                 .orElseThrow(() -> new ResourceNotFoundException("User", id));
         user.setEnabled(enabled);
         return toResponse(user);
+    }
+
+    public void resetPassword(UUID id, String newPassword) {
+        UUID orgId = SecurityUtils.currentOrgId();
+        User user = userRepository.findByIdAndOrganisationId(id, orgId)
+                .orElseThrow(() -> new ResourceNotFoundException("User", id));
+        user.setPasswordHash(passwordEncoder.encode(newPassword));
+        user.setMustChangePassword(true);
+    }
+
+    public void changePassword(String currentPassword, String newPassword) {
+        UUID userId = SecurityUtils.currentUserId();
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User", userId));
+        if (!passwordEncoder.matches(currentPassword, user.getPasswordHash())) {
+            throw new ValidationException("Current password is incorrect");
+        }
+        user.setPasswordHash(passwordEncoder.encode(newPassword));
+        user.setMustChangePassword(false);
     }
 
     public UserResponse toResponse(User user) {

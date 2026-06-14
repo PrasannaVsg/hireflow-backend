@@ -1,5 +1,11 @@
 package com.hireflow.async;
 
+import java.util.List;
+import java.util.UUID;
+
+import org.springframework.scheduling.annotation.Async;
+import org.springframework.stereotype.Component;
+
 import com.hireflow.async.JobStatusRegistry.JobStatus;
 import com.hireflow.async.JobStatusRegistry.State;
 import com.hireflow.config.AsyncConfig;
@@ -13,14 +19,9 @@ import com.hireflow.repository.OrganisationRepository;
 import com.hireflow.service.EmbeddingService;
 import com.hireflow.service.ResumeParserService;
 import com.hireflow.service.StorageService;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.scheduling.annotation.Async;
-import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
-
-import java.util.List;
-import java.util.UUID;
 
 @Slf4j
 @Component

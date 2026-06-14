@@ -3,6 +3,8 @@ package com.hireflow.domain;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.math.BigDecimal;
 import java.util.UUID;
@@ -53,9 +55,13 @@ public class Ranking extends BaseEntity {
     @Column(name = "rationale", columnDefinition = "text")
     private String rationale;
 
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "skill_breakdown", columnDefinition = "jsonb")
     private String skillBreakdown;
 
     @Column(name = "model", length = 60)
     private String model;
+
+    @Column(name = "claude_error", columnDefinition = "text")
+    private String claudeError;
 }

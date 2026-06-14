@@ -12,11 +12,14 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
@@ -36,8 +39,9 @@ public class CandidateController {
             CandidateSource source) { }
 
     public record CandidateResponse(UUID id, String fullName, String email, String phone,
-                                    UUID jobId, String status, PipelineStage pipelineStage,
-                                    CandidateSource source) { }
+                                    UUID jobId, String jobTitle, String status,
+                                    PipelineStage pipelineStage, CandidateSource source,
+                                    Instant createdAt, String createdByName) { }
 
     public record BatchUploadResponse(String jobId, int fileCount, String statusUrl) { }
 
@@ -55,9 +59,12 @@ public class CandidateController {
     }
 
     @GetMapping
-    public PageResponse<CandidateResponse> list(@RequestParam(required = false) UUID jobId,
-                                                Pageable pageable) {
-        return candidateService.list(jobId, pageable);
+    public PageResponse<CandidateResponse> list(
+            @RequestParam(required = false) UUID jobId,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            Pageable pageable) {
+        return candidateService.list(jobId, from, to, pageable);
     }
 
     @PostMapping(value = "/batch-upload", consumes = "multipart/form-data")
@@ -83,5 +90,11 @@ public class CandidateController {
     @GetMapping("/{id}/resume-url")
     public ResponseEntity<String> resumeUrl(@PathVariable UUID id) {
         return ResponseEntity.ok(candidateService.presignedResumeUrl(id));
+    }
+
+    @DeleteMapping("/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void delete(@PathVariable UUID id) {
+        candidateService.delete(id);
     }
 }
