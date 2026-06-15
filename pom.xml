@@ -118,6 +118,13 @@
             <version>${langchain4j.version}</version>
         </dependency>
 
+        <!-- Anthropic Java SDK -->
+        <dependency>
+            <groupId>com.anthropic</groupId>
+            <artifactId>anthropic-java</artifactId>
+            <version>2.34.0</version>
+        </dependency>
+
         <!-- Apache Tika (resume parsing) -->
         <dependency>
             <groupId>org.apache.tika</groupId>

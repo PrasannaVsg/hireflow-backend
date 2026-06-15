@@ -68,20 +68,20 @@ public class IMannerClient {
         try {
             if (props.getSamplingRate() < 1.0 && Math.random() > props.getSamplingRate()) return;
 
-            Map<String, Object> event = Map.of(
-                "event_type",      "generation",
-                "application_id",  props.getApplicationId(),
-                "application_name", props.getApplicationName(),
-                "org_id",          props.getOrgId(),
-                "project_id",      props.getProjectId(),
-                "environment",     props.getEnvironment(),
-                "model_provider",  modelProvider,
-                "model_name",      modelName,
-                "input_tokens",    inputTokens,
-                "output_tokens",   outputTokens,
-                "duration_ms",     durationMs,
-                "trace_id",        UUID.randomUUID().toString(),
-                "status",          success ? "completed" : "error"
+            Map<String, Object> event = Map.ofEntries(
+                Map.entry("event_type",      "generation"),
+                Map.entry("application_id",  props.getApplicationId()),
+                Map.entry("application_name", props.getApplicationName()),
+                Map.entry("org_id",          props.getOrgId()),
+                Map.entry("project_id",      props.getProjectId()),
+                Map.entry("environment",     props.getEnvironment()),
+                Map.entry("model_provider",  modelProvider),
+                Map.entry("model_name",      modelName),
+                Map.entry("input_tokens",    inputTokens),
+                Map.entry("output_tokens",   outputTokens),
+                Map.entry("duration_ms",     durationMs),
+                Map.entry("trace_id",        UUID.randomUUID().toString()),
+                Map.entry("status",          success ? "completed" : "error")
             );
             // drop silently if queue is full rather than blocking
             queue.offer(event);
