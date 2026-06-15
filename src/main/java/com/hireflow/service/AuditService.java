@@ -2,6 +2,7 @@ package com.hireflow.service;
 
 import com.hireflow.domain.AiAuditLog;
 import com.hireflow.domain.enums.AiOperation;
+import com.hireflow.observability.IMannerClient;
 import com.hireflow.repository.AiAuditLogRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -20,6 +21,7 @@ import java.util.UUID;
 public class AuditService {
 
     private final AiAuditLogRepository auditRepository;
+    private final IMannerClient iMannerClient;
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void recordSuccess(UUID orgId, UUID actorId, AiOperation op, String model,
@@ -37,6 +39,12 @@ public class AuditService {
                 .promptHash(sha256(prompt))
                 .targetEntityId(targetId)
                 .build());
+
+        iMannerClient.record(
+                providerFor(op), model,
+                reqTokens  != null ? reqTokens  : 0,
+                respTokens != null ? respTokens : 0,
+                latencyMs, true);
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -52,6 +60,12 @@ public class AuditService {
                 .errorMessage(truncate(error))
                 .targetEntityId(targetId)
                 .build());
+
+        iMannerClient.record(providerFor(op), model, 0, 0, latencyMs, false);
+    }
+
+    private String providerFor(AiOperation op) {
+        return op == AiOperation.EMBEDDING ? "voyageai" : "anthropic";
     }
 
     private String sha256(String input) {

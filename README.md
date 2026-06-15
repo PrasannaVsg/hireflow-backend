@@ -334,12 +334,88 @@ Response:
 
 ---
 
+#### Enable User
+> **Why:** Re-activates a previously disabled account — for example, a contractor returning for another engagement.
+
+```
+PATCH /api/v1/users/{userId}/enable
+Authorization: Bearer <token>
+```
+
+---
+
 #### Disable User
 > **Why:** When a recruiter leaves the company, the admin disables their account instead of deleting it. This preserves all their historical activity (jobs created, candidates ranked) while preventing them from logging in.
 
 ```
 PATCH /api/v1/users/{userId}/disable
 Authorization: Bearer <token>
+```
+
+---
+
+#### Reset Password (admin)
+> **Why:** An admin can reset another user's password without knowing the old one — useful for onboarding or when a user is locked out. Sets `mustChangePassword = true` so the user is prompted to choose a new password on next login.
+
+```
+PATCH /api/v1/users/{userId}/reset-password
+Authorization: Bearer <token>
+Content-Type: application/json
+```
+Request:
+```json
+{ "newPassword": "TemporaryPass123!" }
+```
+
+---
+
+#### Change Own Password
+> **Why:** Lets the currently authenticated user change their own password. The frontend calls this automatically when `mustChangePassword` is true after login.
+
+```
+PATCH /api/v1/users/me/change-password
+Authorization: Bearer <token>
+Content-Type: application/json
+```
+Request:
+```json
+{
+  "currentPassword": "OldPass123!",
+  "newPassword": "NewPass456!"
+}
+```
+
+---
+
+### Audit Log
+
+Records every significant platform action (user created, password reset, candidate moved, ranking run, etc.) with the actor's name, entity affected, and timestamp. Writes happen asynchronously so they never slow down the main request; the actor is captured synchronously before the async boundary to ensure the correct user is always logged.
+
+---
+
+#### List Audit Logs
+> **Why:** Admins can review a chronological trail of all actions taken in the platform — useful for security audits, debugging unexpected changes, and compliance reporting.
+
+```
+GET /api/v1/audit?page=0&size=20
+Authorization: Bearer <token>
+```
+Response:
+```json
+{
+  "content": [
+    {
+      "id": "log-uuid",
+      "actorName": "Prasanna K",
+      "action": "USER_CREATED",
+      "entityType": "USER",
+      "entityName": "sam@hireflow.io",
+      "details": "Created user with role RECRUITER",
+      "createdAt": "2026-06-14T10:00:00Z"
+    }
+  ],
+  "totalElements": 42
+}
 ```
 
 ---
@@ -1061,6 +1137,10 @@ Run Ranking API
 | V6 | Add source field to candidates |
 | V7 | Add auto-process config to jobs |
 | V8 | Fix embedding dimensions 1536 → 1024 |
+| V9 | Add must_change_password flag to users |
+| V10 | Add user audit log table (actor-based action trail) |
+| V11 | Add enabled/disabled status to users |
+| V12 | Add full_name to users table |
 
 ---
 

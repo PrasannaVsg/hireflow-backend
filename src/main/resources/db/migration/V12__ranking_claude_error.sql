@@ -1,1 +1,0 @@
-ALTER TABLE rankings ADD COLUMN IF NOT EXISTS claude_error TEXT;

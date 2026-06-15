@@ -1,1 +1,0 @@
-ALTER TABLE outreach_drafts ADD COLUMN IF NOT EXISTS sent_at TIMESTAMPTZ;
