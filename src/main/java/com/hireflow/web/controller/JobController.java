@@ -16,7 +16,9 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 @RestController
@@ -28,20 +30,31 @@ public class JobController {
 
     public record CreateJobRequest(
             @NotBlank @Size(max = 200) String title,
+            @Size(max = 40) String jobCode,
             @NotBlank String description,
-            @Size(max = 120) String location,
+            @Size(max = 200) String clientName,
+            List<String> locations,
             @Size(max = 60) String seniority,
+            Integer expMin,
+            Integer expMax,
             String requiredSkills,
+            BigDecimal budgetMin,
+            BigDecimal budgetMax,
+            String mailTemplate,
             boolean autoProcessEnabled,
+            boolean autoEmailOnStageChange,
             @Min(1) @Max(200) int shortlistSize,
-            @DecimalMin("0.0") @DecimalMax("100.0") java.math.BigDecimal scoreThreshold,
+            @DecimalMin("0.0") @DecimalMax("100.0") BigDecimal scoreThreshold,
             @Size(max = 40) String emailTone) { }
 
-    public record JobResponse(UUID id, String title, String description, String location,
-                              String seniority, String requiredSkills, JobStatus status,
-                              boolean autoProcessEnabled, int autoShortlistSize,
-                              java.math.BigDecimal autoScoreThreshold, String autoEmailTone,
-                              long candidateCount, Instant createdAt, String createdByName) { }
+    public record JobResponse(
+            UUID id, String jobCode, String title, String clientName, String description,
+            List<String> locations, String seniority, Integer expMin, Integer expMax,
+            String requiredSkills, BigDecimal budgetMin, BigDecimal budgetMax,
+            String mailTemplate, JobStatus status,
+            boolean autoProcessEnabled, boolean autoEmailOnStageChange,
+            int autoShortlistSize, BigDecimal autoScoreThreshold, String autoEmailTone,
+            long candidateCount, Instant createdAt, String createdByName) { }
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)

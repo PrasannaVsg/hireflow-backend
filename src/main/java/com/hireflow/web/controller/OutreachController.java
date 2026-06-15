@@ -2,9 +2,11 @@ package com.hireflow.web.controller;
 
 import com.hireflow.domain.enums.OutreachStatus;
 import com.hireflow.service.OutreachService;
+import com.hireflow.web.dto.common.PageResponse;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
@@ -23,9 +25,15 @@ public class OutreachController {
                                String tone) { }
 
     public record OutreachResponse(UUID id, UUID candidateId, UUID jobId,
-                                   String subject, String body, OutreachStatus status, Instant sentAt) { }
+                                   String subject, String body, OutreachStatus status, Instant sentAt,
+                                   String candidateName, String candidateEmail, String jobTitle, String model) { }
 
     public record StatusRequest(@NotNull OutreachStatus status) { }
+
+    @GetMapping
+    public PageResponse<OutreachResponse> list(Pageable pageable) {
+        return PageResponse.of(outreachService.list(pageable).map(this::toResponse));
+    }
 
     @PostMapping("/draft")
     @ResponseStatus(HttpStatus.CREATED)
@@ -48,7 +56,17 @@ public class OutreachController {
     }
 
     private OutreachResponse toResponse(com.hireflow.domain.OutreachDraft d) {
-        return new OutreachResponse(d.getId(), d.getCandidate().getId(), d.getJob().getId(),
-                d.getSubject(), d.getBody(), d.getStatus(), d.getSentAt());
+        return new OutreachResponse(
+                d.getId(),
+                d.getCandidate().getId(),
+                d.getJob().getId(),
+                d.getSubject(),
+                d.getBody(),
+                d.getStatus(),
+                d.getSentAt(),
+                d.getCandidate().getFullName(),
+                d.getCandidate().getEmail(),
+                d.getJob().getTitle(),
+                d.getModel());
     }
 }

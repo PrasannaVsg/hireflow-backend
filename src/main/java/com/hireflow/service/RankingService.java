@@ -86,6 +86,45 @@ public class RankingService {
         return results;
     }
 
+    @Transactional
+    public Ranking rankSingleCandidate(UUID jobId, UUID candidateId) {
+        UUID orgId    = SecurityUtils.currentOrgId();
+        UUID actorId  = SecurityUtils.currentUserId();
+
+        JobRequisition job = jobRepository.findByIdAndOrganisationId(jobId, orgId)
+                .orElseThrow(() -> new ResourceNotFoundException("JobRequisition", jobId));
+
+        Boolean hasEmbedding = jobRepository.hasEmbedding(jobId);
+        if (hasEmbedding == null || !hasEmbedding) {
+            throw new AiProviderException("Job has no embedding; (re)index the job before ranking.");
+        }
+
+        Candidate candidate = candidateRepository.findByIdAndOrganisationId(candidateId, orgId)
+                .orElseThrow(() -> new ResourceNotFoundException("Candidate", candidateId));
+
+        if (candidate.getResumeText() == null) {
+            throw new AiProviderException("Candidate has no parsed resume; upload a resume first.");
+        }
+
+        Double similarity = candidateRepository.getVectorSimilarity(jobId, candidateId);
+        double sim = (similarity != null) ? similarity : 0.0;
+
+        Ranking ranking = scoreOne(job, candidate, sim, orgId, actorId);
+
+        return rankingRepository.findByJobIdAndCandidateId(jobId, candidateId)
+                .map(existing -> {
+                    existing.setScore(ranking.getScore());
+                    existing.setVectorSimilarity(ranking.getVectorSimilarity());
+                    existing.setLlmScore(ranking.getLlmScore());
+                    existing.setRationale(ranking.getRationale());
+                    existing.setSkillBreakdown(ranking.getSkillBreakdown());
+                    existing.setModel(ranking.getModel());
+                    existing.setClaudeError(ranking.getClaudeError());
+                    return rankingRepository.save(existing);
+                })
+                .orElseGet(() -> rankingRepository.save(ranking));
+    }
+
     @Transactional(readOnly = true)
     public Page<Ranking> listRankings(UUID jobId, Pageable pageable) {
         return rankingRepository.findByJobIdOrderByScoreDesc(jobId, pageable);

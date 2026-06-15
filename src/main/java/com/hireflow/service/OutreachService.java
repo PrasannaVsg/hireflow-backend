@@ -37,6 +37,12 @@ public class OutreachService {
     private final AuditService auditService;
     private final EmailService emailService;
 
+    @Transactional(readOnly = true)
+    public org.springframework.data.domain.Page<OutreachDraft> list(org.springframework.data.domain.Pageable pageable) {
+        UUID orgId = SecurityUtils.currentOrgId();
+        return outreachRepository.findByCandidateOrganisationId(orgId, pageable);
+    }
+
     @Transactional
     public OutreachDraft draftOutreach(UUID candidateId, UUID jobId, String tone) {
         UUID orgId = SecurityUtils.currentOrgId();

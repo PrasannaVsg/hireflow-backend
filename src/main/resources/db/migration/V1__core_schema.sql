@@ -14,6 +14,8 @@ CREATE TABLE organisations (
     version             BIGINT       NOT NULL DEFAULT 0,
     created_by_user_id  UUID,
     updated_by_user_id  UUID,
+    mail_from           VARCHAR(200),
+    mail_reply_to       VARCHAR(200),
     CONSTRAINT uk_org_slug UNIQUE (slug)
 );
 
@@ -42,25 +44,33 @@ CREATE INDEX idx_user_org ON users(organisation_id);
 
 -- ── job_requisitions ───────────────────────────────────────────────────────
 CREATE TABLE job_requisitions (
-    id                   UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
-    organisation_id      UUID         NOT NULL REFERENCES organisations(id),
-    created_by           UUID         NOT NULL REFERENCES users(id),
-    title                VARCHAR(200) NOT NULL,
-    description          TEXT         NOT NULL,
-    location             VARCHAR(120),
-    seniority            VARCHAR(60),
-    required_skills      TEXT,
-    status               VARCHAR(20)  NOT NULL DEFAULT 'DRAFT',
-    auto_process_enabled BOOLEAN      NOT NULL DEFAULT FALSE,
-    auto_shortlist_size  INTEGER      NOT NULL DEFAULT 25,
-    auto_score_threshold NUMERIC(5,2) NOT NULL DEFAULT 60.0,
-    auto_email_tone      VARCHAR(40)  NOT NULL DEFAULT 'professional',
-    embedding            vector(1024),
-    created_at           TIMESTAMPTZ  NOT NULL DEFAULT now(),
-    updated_at           TIMESTAMPTZ  NOT NULL DEFAULT now(),
-    version              BIGINT       NOT NULL DEFAULT 0,
-    created_by_user_id   UUID,
-    updated_by_user_id   UUID
+    id                           UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+    organisation_id              UUID         NOT NULL REFERENCES organisations(id),
+    created_by                   UUID         NOT NULL REFERENCES users(id),
+    job_code                     VARCHAR(40),
+    title                        VARCHAR(200) NOT NULL,
+    client_name                  VARCHAR(200),
+    description                  TEXT         NOT NULL,
+    locations                    TEXT,
+    seniority                    VARCHAR(60),
+    exp_min                      INTEGER,
+    exp_max                      INTEGER,
+    required_skills              TEXT,
+    budget_min                   NUMERIC(12,2),
+    budget_max                   NUMERIC(12,2),
+    mail_template                TEXT,
+    status                       VARCHAR(20)  NOT NULL DEFAULT 'DRAFT',
+    auto_process_enabled         BOOLEAN      NOT NULL DEFAULT FALSE,
+    auto_email_on_stage_change   BOOLEAN      NOT NULL DEFAULT FALSE,
+    auto_shortlist_size          INTEGER      NOT NULL DEFAULT 25,
+    auto_score_threshold         NUMERIC(5,2) NOT NULL DEFAULT 60.0,
+    auto_email_tone              VARCHAR(40)  NOT NULL DEFAULT 'professional',
+    embedding                    vector(1024),
+    created_at                   TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    updated_at                   TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    version                      BIGINT       NOT NULL DEFAULT 0,
+    created_by_user_id           UUID,
+    updated_by_user_id           UUID
 );
 CREATE INDEX idx_job_org    ON job_requisitions(organisation_id);
 CREATE INDEX idx_job_status ON job_requisitions(status);
@@ -80,7 +90,9 @@ CREATE TABLE candidates (
     resume_object_key  VARCHAR(512),
     resume_text        TEXT,
     status             VARCHAR(20)  NOT NULL DEFAULT 'NEW',
-    pipeline_stage     VARCHAR(20)  NOT NULL DEFAULT 'SOURCED',
+    pipeline_stage     VARCHAR(30)  NOT NULL DEFAULT 'SOURCED',
+    offer_amount       NUMERIC(12,2),
+    rejection_reason   VARCHAR(500),
     embedding          vector(1024),
     created_at         TIMESTAMPTZ  NOT NULL DEFAULT now(),
     updated_at         TIMESTAMPTZ  NOT NULL DEFAULT now(),
@@ -91,6 +103,7 @@ CREATE TABLE candidates (
 CREATE INDEX idx_cand_org   ON candidates(organisation_id);
 CREATE INDEX idx_cand_job   ON candidates(job_id);
 CREATE INDEX idx_cand_stage ON candidates(pipeline_stage);
+CREATE INDEX idx_cand_email ON candidates(email);
 CREATE INDEX idx_cand_embedding_hnsw
     ON candidates USING hnsw (embedding vector_cosine_ops)
     WITH (m = 16, ef_construction = 64);

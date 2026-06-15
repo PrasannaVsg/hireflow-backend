@@ -18,6 +18,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
@@ -38,14 +39,19 @@ public class CandidateController {
             UUID jobId,
             CandidateSource source) { }
 
-    public record CandidateResponse(UUID id, String fullName, String email, String phone,
-                                    UUID jobId, String jobTitle, String status,
-                                    PipelineStage pipelineStage, CandidateSource source,
-                                    Instant createdAt, String createdByName) { }
+    public record CandidateResponse(
+            UUID id, String fullName, String email, String phone,
+            UUID jobId, String jobTitle, String status,
+            PipelineStage pipelineStage, CandidateSource source,
+            BigDecimal offerAmount, String rejectionReason,
+            Instant createdAt, String createdByName) { }
 
     public record BatchUploadResponse(String jobId, int fileCount, String statusUrl) { }
 
-    public record StageChangeRequest(@NotBlank String targetStage) { }
+    public record StageChangeRequest(
+            @NotBlank String targetStage,
+            BigDecimal offerAmount,
+            String rejectionReason) { }
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
@@ -84,7 +90,10 @@ public class CandidateController {
     public CandidateResponse moveStage(@PathVariable UUID id,
                                        @Valid @RequestBody StageChangeRequest request) {
         return candidateService.toResponse(
-                pipelineService.moveStage(id, PipelineStage.valueOf(request.targetStage())));
+                pipelineService.moveStage(id,
+                        PipelineStage.valueOf(request.targetStage()),
+                        request.offerAmount(),
+                        request.rejectionReason()));
     }
 
     @GetMapping("/{id}/resume-url")

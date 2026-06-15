@@ -36,6 +36,15 @@ public class RankingController {
                 .toList();
     }
 
+    @PostMapping("/candidate/{candidateId}")
+    public RankingResponse rankSingle(@PathVariable UUID jobId, @PathVariable UUID candidateId) {
+        Ranking r = rankingService.rankSingleCandidate(jobId, candidateId);
+        return new RankingResponse(
+                r.getCandidate().getId(), r.getCandidate().getFullName(), r.getScore(),
+                r.getLlmScore(), r.getVectorSimilarity(), r.getRationale(), r.getSkillBreakdown(),
+                r.getLlmScore() == null, r.getClaudeError());
+    }
+
     @GetMapping
     public PageResponse<RankingResponse> list(@PathVariable UUID jobId, Pageable pageable) {
         return PageResponse.of(rankingService.listRankings(jobId, pageable)

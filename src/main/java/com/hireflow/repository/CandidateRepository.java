@@ -27,6 +27,8 @@ public interface CandidateRepository extends JpaRepository<Candidate, UUID>, Jpa
 
     Optional<Candidate> findByIdAndOrganisationId(UUID id, UUID organisationId);
 
+    Optional<Candidate> findByEmailAndOrganisationId(String email, UUID organisationId);
+
     long countByOrganisationIdAndStatus(UUID organisationId, CandidateStatus status);
 
     long countByOrganisationIdAndPipelineStage(UUID organisationId, PipelineStage stage);
@@ -62,6 +64,14 @@ public interface CandidateRepository extends JpaRepository<Candidate, UUID>, Jpa
                                              @Param("jobId") UUID jobId,
                                              @Param("queryVector") String queryVector,
                                              @Param("topK") int topK);
+
+    @Query(value = """
+            SELECT 1 - (c.embedding <=> (SELECT j.embedding FROM job_requisitions j WHERE j.id = :jobId))
+            FROM candidates c
+            WHERE c.id = :candidateId
+              AND c.embedding IS NOT NULL
+            """, nativeQuery = true)
+    Double getVectorSimilarity(@Param("jobId") UUID jobId, @Param("candidateId") UUID candidateId);
 
     interface SemanticMatch {
         UUID getCandidateId();

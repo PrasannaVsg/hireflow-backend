@@ -93,7 +93,7 @@ public class AutoProcessService {
                     emailStatus = "SKIPPED_NO_EMAIL";
                 }
 
-                pipelineService.moveStage(candidateId, PipelineStage.SCREENING);
+                pipelineService.moveStage(candidateId, PipelineStage.SCREENING, null, null);
 
             } catch (Exception e) {
                 log.warn("Auto-process failed for candidate {}: {}", candidateId, e.getMessage());

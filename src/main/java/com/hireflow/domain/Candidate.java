@@ -10,14 +10,16 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import lombok.*;
 
+import java.math.BigDecimal;
 import java.util.UUID;
 
 @Entity
 @Table(name = "candidates",
        indexes = {
-           @Index(name = "idx_cand_org", columnList = "organisation_id"),
-           @Index(name = "idx_cand_job", columnList = "job_id"),
-           @Index(name = "idx_cand_stage", columnList = "pipeline_stage")
+           @Index(name = "idx_cand_org",   columnList = "organisation_id"),
+           @Index(name = "idx_cand_job",   columnList = "job_id"),
+           @Index(name = "idx_cand_stage", columnList = "pipeline_stage"),
+           @Index(name = "idx_cand_email", columnList = "email")
        })
 @Getter
 @Setter
@@ -74,7 +76,7 @@ public class Candidate extends BaseEntity {
 
     @NotNull
     @Enumerated(EnumType.STRING)
-    @Column(name = "pipeline_stage", nullable = false, length = 20)
+    @Column(name = "pipeline_stage", nullable = false, length = 30)
     @Builder.Default
     @ToString.Include
     private PipelineStage pipelineStage = PipelineStage.SOURCED;
@@ -82,4 +84,11 @@ public class Candidate extends BaseEntity {
     @Enumerated(EnumType.STRING)
     @Column(name = "source", length = 20)
     private CandidateSource source;
+
+    @Column(name = "offer_amount", precision = 12, scale = 2)
+    private BigDecimal offerAmount;
+
+    @Size(max = 500)
+    @Column(name = "rejection_reason", length = 500)
+    private String rejectionReason;
 }

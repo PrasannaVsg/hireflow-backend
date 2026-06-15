@@ -46,4 +46,10 @@ public class Organisation extends BaseEntity {
     @Column(name = "active", nullable = false)
     @Builder.Default
     private boolean active = true;
+
+    @Column(name = "mail_from", length = 200)
+    private String mailFrom;
+
+    @Column(name = "mail_reply_to", length = 200)
+    private String mailReplyTo;
 }

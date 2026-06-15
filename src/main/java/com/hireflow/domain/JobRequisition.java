@@ -13,7 +13,7 @@ import java.util.UUID;
 @Entity
 @Table(name = "job_requisitions",
        indexes = {
-           @Index(name = "idx_job_org", columnList = "organisation_id"),
+           @Index(name = "idx_job_org",    columnList = "organisation_id"),
            @Index(name = "idx_job_status", columnList = "status")
        })
 @Getter
@@ -40,25 +40,47 @@ public class JobRequisition extends BaseEntity {
                 foreignKey = @ForeignKey(name = "fk_job_creator"))
     private User createdBy;
 
+    @Column(name = "job_code", length = 40)
+    private String jobCode;
+
     @NotBlank
     @Size(max = 200)
     @Column(name = "title", nullable = false, length = 200)
     @ToString.Include
     private String title;
 
+    @Size(max = 200)
+    @Column(name = "client_name", length = 200)
+    private String clientName;
+
     @NotBlank
     @Column(name = "description", nullable = false, columnDefinition = "text")
     private String description;
 
-    @Size(max = 120)
-    @Column(name = "location", length = 120)
-    private String location;
+    /** Comma-separated list of locations e.g. "Bangalore,Chennai,Remote" */
+    @Column(name = "locations", columnDefinition = "text")
+    private String locations;
 
     @Column(name = "seniority", length = 60)
     private String seniority;
 
+    @Column(name = "exp_min")
+    private Integer expMin;
+
+    @Column(name = "exp_max")
+    private Integer expMax;
+
     @Column(name = "required_skills", columnDefinition = "text")
     private String requiredSkills;
+
+    @Column(name = "budget_min", precision = 12, scale = 2)
+    private BigDecimal budgetMin;
+
+    @Column(name = "budget_max", precision = 12, scale = 2)
+    private BigDecimal budgetMax;
+
+    @Column(name = "mail_template", columnDefinition = "text")
+    private String mailTemplate;
 
     @NotNull
     @Enumerated(EnumType.STRING)
@@ -73,6 +95,10 @@ public class JobRequisition extends BaseEntity {
     @Column(name = "auto_process_enabled", nullable = false)
     @Builder.Default
     private boolean autoProcessEnabled = false;
+
+    @Column(name = "auto_email_on_stage_change", nullable = false)
+    @Builder.Default
+    private boolean autoEmailOnStageChange = false;
 
     @Column(name = "auto_shortlist_size", nullable = false)
     @Builder.Default

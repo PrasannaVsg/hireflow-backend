@@ -18,7 +18,7 @@ public class PromptBuilder {
         return PromptTemplates.RANKING_USER.formatted(
                 safe(job.getTitle()),
                 safe(job.getSeniority()),
-                safe(job.getLocation()),
+                safe(job.getLocations()),
                 safe(job.getRequiredSkills()),
                 safe(job.getDescription()),
                 safe(candidate.getFullName()),
@@ -33,7 +33,7 @@ public class PromptBuilder {
                                           String senderName, String tone) {
         return PromptTemplates.OUTREACH_USER.formatted(
                 safe(job.getTitle()),
-                safe(job.getLocation()),
+                safe(job.getLocations()),
                 safe(job.getDescription()).substring(0, Math.min(safe(job.getDescription()).length(), 600)),
                 safe(candidate.getFullName()),
                 excerpt(candidate.getResumeText()),

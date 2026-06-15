@@ -55,6 +55,13 @@ public class CandidateService {
         UUID orgId = SecurityUtils.currentOrgId();
         Organisation org = orgRepository.getReferenceById(orgId);
 
+        if (request.email() != null && !request.email().isBlank()) {
+            candidateRepository.findByEmailAndOrganisationId(request.email(), orgId).ifPresent(existing -> {
+                throw new ValidationException(
+                    "A candidate with email '" + request.email() + "' already exists in your organisation.");
+            });
+        }
+
         Candidate candidate = Candidate.builder()
                 .organisation(org)
                 .fullName(request.fullName())
@@ -168,6 +175,7 @@ public class CandidateService {
                 fresh.getJob() != null ? fresh.getJob().getId() : null,
                 fresh.getJob() != null ? fresh.getJob().getTitle() : null,
                 fresh.getStatus().name(), fresh.getPipelineStage(), fresh.getSource(),
+                fresh.getOfferAmount(), fresh.getRejectionReason(),
                 fresh.getCreatedAt(), createdByName);
     }
 }

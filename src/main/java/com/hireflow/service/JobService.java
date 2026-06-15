@@ -19,6 +19,10 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
 import java.util.UUID;
 
 @Slf4j
@@ -35,30 +39,42 @@ public class JobService {
     private final UserAuditService userAuditService;
 
     public JobResponse create(CreateJobRequest request) {
-        UUID orgId = SecurityUtils.currentOrgId();
+        UUID orgId  = SecurityUtils.currentOrgId();
         UUID userId = SecurityUtils.currentUserId();
 
-        Organisation org = orgRepository.getReferenceById(orgId);
-        User creator = userRepository.getReferenceById(userId);
+        Organisation org     = orgRepository.getReferenceById(orgId);
+        User         creator = userRepository.getReferenceById(userId);
 
         JobRequisition job = JobRequisition.builder()
                 .organisation(org)
                 .createdBy(creator)
+                .jobCode(request.jobCode() != null && !request.jobCode().isBlank()
+                        ? request.jobCode() : null)
                 .title(request.title())
                 .description(request.description())
-                .location(request.location())
+                .clientName(request.clientName())
+                .locations(joinLocations(request.locations()))
                 .seniority(request.seniority())
+                .expMin(request.expMin())
+                .expMax(request.expMax())
                 .requiredSkills(request.requiredSkills())
+                .budgetMin(request.budgetMin())
+                .budgetMax(request.budgetMax())
+                .mailTemplate(request.mailTemplate())
                 .status(JobStatus.DRAFT)
                 .autoProcessEnabled(request.autoProcessEnabled())
+                .autoEmailOnStageChange(request.autoEmailOnStageChange())
                 .autoShortlistSize(request.shortlistSize() > 0 ? request.shortlistSize() : 25)
                 .autoScoreThreshold(request.scoreThreshold() != null
-                        ? request.scoreThreshold() : java.math.BigDecimal.valueOf(60.0))
-                .autoEmailTone(request.emailTone() != null
-                        && !request.emailTone().isBlank() ? request.emailTone() : "professional")
+                        ? request.scoreThreshold() : BigDecimal.valueOf(60.0))
+                .autoEmailTone(request.emailTone() != null && !request.emailTone().isBlank()
+                        ? request.emailTone() : "professional")
                 .build();
 
         JobRequisition saved = jobRepository.save(job);
+
+        // Auto-generate job code after ID is assigned
+        saved.setJobCode("JOB-" + saved.getId().toString().substring(0, 8).toUpperCase());
         userAuditService.log("JOB_CREATED", "JOB", saved.getId(), saved.getTitle(), null);
         return toResponse(saved);
     }
@@ -85,10 +101,17 @@ public class JobService {
                 .orElseThrow(() -> new ResourceNotFoundException("JobRequisition", id));
         job.setTitle(request.title());
         job.setDescription(request.description());
-        job.setLocation(request.location());
+        job.setClientName(request.clientName());
+        job.setLocations(joinLocations(request.locations()));
         job.setSeniority(request.seniority());
+        job.setExpMin(request.expMin());
+        job.setExpMax(request.expMax());
         job.setRequiredSkills(request.requiredSkills());
+        job.setBudgetMin(request.budgetMin());
+        job.setBudgetMax(request.budgetMax());
+        job.setMailTemplate(request.mailTemplate());
         job.setAutoProcessEnabled(request.autoProcessEnabled());
+        job.setAutoEmailOnStageChange(request.autoEmailOnStageChange());
         if (request.shortlistSize() > 0) job.setAutoShortlistSize(request.shortlistSize());
         if (request.scoreThreshold() != null) job.setAutoScoreThreshold(request.scoreThreshold());
         if (request.emailTone() != null && !request.emailTone().isBlank())
@@ -98,7 +121,7 @@ public class JobService {
     }
 
     public JobResponse changeStatus(UUID id, JobStatus status) {
-        UUID orgId = SecurityUtils.currentOrgId();
+        UUID orgId  = SecurityUtils.currentOrgId();
         UUID userId = SecurityUtils.currentUserId();
         JobRequisition job = jobRepository.findByIdAndOrganisationId(id, orgId)
                 .orElseThrow(() -> new ResourceNotFoundException("JobRequisition", id));
@@ -120,7 +143,7 @@ public class JobService {
     }
 
     public void reindexEmbedding(UUID id) {
-        UUID orgId = SecurityUtils.currentOrgId();
+        UUID orgId  = SecurityUtils.currentOrgId();
         UUID userId = SecurityUtils.currentUserId();
         JobRequisition job = jobRepository.findByIdAndOrganisationId(id, orgId)
                 .orElseThrow(() -> new ResourceNotFoundException("JobRequisition", id));
@@ -164,9 +187,24 @@ public class JobService {
     public JobResponse toResponse(JobRequisition job) {
         long count = job.getId() != null ? candidateRepository.countByJobId(job.getId()) : 0;
         String createdByName = job.getCreatedBy() != null ? job.getCreatedBy().getFullName() : null;
-        return new JobResponse(job.getId(), job.getTitle(), job.getDescription(),
-                job.getLocation(), job.getSeniority(), job.getRequiredSkills(), job.getStatus(),
-                job.isAutoProcessEnabled(), job.getAutoShortlistSize(),
-                job.getAutoScoreThreshold(), job.getAutoEmailTone(), count, job.getCreatedAt(), createdByName);
+        return new JobResponse(
+                job.getId(), job.getJobCode(), job.getTitle(), job.getClientName(),
+                job.getDescription(), splitLocations(job.getLocations()),
+                job.getSeniority(), job.getExpMin(), job.getExpMax(),
+                job.getRequiredSkills(), job.getBudgetMin(), job.getBudgetMax(),
+                job.getMailTemplate(), job.getStatus(),
+                job.isAutoProcessEnabled(), job.isAutoEmailOnStageChange(),
+                job.getAutoShortlistSize(), job.getAutoScoreThreshold(), job.getAutoEmailTone(),
+                count, job.getCreatedAt(), createdByName);
+    }
+
+    private String joinLocations(List<String> locations) {
+        if (locations == null || locations.isEmpty()) return null;
+        return String.join(",", locations);
+    }
+
+    private List<String> splitLocations(String locations) {
+        if (locations == null || locations.isBlank()) return Collections.emptyList();
+        return Arrays.asList(locations.split(","));
     }
 }
